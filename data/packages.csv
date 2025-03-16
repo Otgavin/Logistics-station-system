@@ -1,0 +1,2 @@
+package_id,sender_name,sender_address,sender_phone,recipient_name,recipient_address,recipient_phone,item_type,item_name,item_weight,item_volume,item_is_fragile,status,claim_code
+10000001,1,1,1,1,1,1,1,1,1,1,1,1,

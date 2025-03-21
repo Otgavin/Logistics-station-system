@@ -5,6 +5,7 @@
 #include "packages.h"
 #include "users.h"
 #include "sqlite3.h"
+#include "coupon.h"
 
 
 extern sqlite3 *db; //数据库连接，实际定义在database.c中
@@ -114,62 +115,6 @@ Pricing load_pricing() {
     return pricing;
 }
 
-
-// 查询用户绑定的所有未使用优惠券
-int get_available_coupons_for_user(const char *username, Coupon *out_coupons, int *count) {
-    sqlite3_stmt *stmt;
-    const char *sql = "SELECT code, discount_rate FROM coupons WHERE username = ? AND is_used = 0;";
-    int i = 0;
-
-    if (sqlite3_prepare_v2(db, sql, -1, &stmt, 0) == SQLITE_OK) {
-        sqlite3_bind_text(stmt, 1, username, -1, SQLITE_STATIC);
-        while (sqlite3_step(stmt) == SQLITE_ROW && i < 10) {
-            strncpy(out_coupons[i].code, (const char *)sqlite3_column_text(stmt, 0), sizeof(out_coupons[i].code));
-            out_coupons[i].discount_rate = sqlite3_column_double(stmt, 1);
-            out_coupons[i].is_used = 0;
-            i++;
-        }
-        sqlite3_finalize(stmt);
-        *count = i;
-        return i > 0;
-    }
-    return 0;
-}
-
-// 提示用户选择优惠券
-int prompt_user_choose_coupon(Coupon *available, int count) {
-    printf("\n🎁 您有 %d 张可用优惠券：\n", count);
-    for (int i = 0; i < count; i++) {
-        printf("%d. %s (%.0f%% 折扣)\n", i + 1, available[i].code, available[i].discount_rate * 100);
-    }
-    printf("是否使用优惠券？(Y/N): ");
-    char yn;
-    scanf(" %c", &yn);
-    getchar();
-
-    if (yn != 'Y' && yn != 'y') return -1;
-
-    printf("请输入要使用的优惠券编号 (1-%d): ", count);
-    int index;
-    scanf("%d", &index);
-    getchar();
-
-    if (index < 1 || index > count) return -1;
-    return index - 1;
-}
-
-
-// 标记优惠券为已使用
-void mark_coupon_as_used(const char *code) {
-    sqlite3_stmt *stmt;
-    const char *sql = "UPDATE coupons SET is_used = 1 WHERE code = ?;";
-
-    if (sqlite3_prepare_v2(db, sql, -1, &stmt, 0) == SQLITE_OK) {
-        sqlite3_bind_text(stmt, 1, code, -1, SQLITE_STATIC);
-        sqlite3_step(stmt);
-    }
-    sqlite3_finalize(stmt);
-}
 
 // 获取特殊属性的加价倍率
 double get_surcharge_rate(const char *property) {

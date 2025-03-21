@@ -3,6 +3,7 @@
 
 #include "packages.h"
 #include "users.h"
+#include "coupon.h"
 
 //计价方式结构体
 typedef struct pricing {
@@ -11,13 +12,6 @@ typedef struct pricing {
     double vol_ratio;         // 体积换算重量的抛比系数
     double price_per_km;
 } Pricing;
-
-//优惠券结构体
-typedef struct coupon {
-    char code[20];           // 优惠券代码
-    double discount_rate;    // 折扣比例（如 0.10 表示打 9 折）
-    int is_used;             // 是否已使用（0 = 未使用，1 = 已使用）
-} Coupon;
 
 //价格结构体
 typedef struct price {
@@ -50,12 +44,6 @@ extern const int special_property_count;
 Price calculate_price(const Item *item, const Users *user, const char *sender_province, const char *recipient_province);
 void modify_pricing_rules();  // 修改计价方式的函数声明
 struct pricing load_pricing();
-
-
-//优惠券相关
-int get_available_coupons_for_user(const char *username, Coupon *out_coupons, int *count);
-int prompt_user_choose_coupon(Coupon *available, int count);
-void mark_coupon_as_used(const char *code);
 
 
 //考虑包裹自身属性

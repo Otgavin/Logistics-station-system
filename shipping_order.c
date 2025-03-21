@@ -110,23 +110,40 @@ void input_item_info(Item *item) {
 
 // 选择取件方式
 int select_pickup_method() {
-    int choice;
-    char input[10];
+    char input[20];
+    int choice = -1;
 
-    printf("请选择取件方式 (1: 上门取件, 2: 自寄, Q: 退出): ");
-    fgets(input, sizeof(input), stdin);
-    if (input[0] == 'Q' || input[0] == 'q') {
-        printf("退出到主界面\n");
-        return 0;
+    while (1) {
+        printf("请选择取件方式：\n");
+        printf("  1. 上门取件\n");
+        printf("  2. 自寄\n");
+        printf("  Q. 退出\n");
+        printf("请输入选项（1/2/Q）：");
+
+        fgets(input, sizeof(input), stdin);
+        input[strcspn(input, "\n")] = '\0';  // 去除换行
+
+        // 判断是否是退出
+        if (strcasecmp(input, "q") == 0) {
+            printf("已选择退出。\n");
+            return 0;
+        }
+
+        // 尝试解析为数字
+        if (sscanf(input, "%d", &choice) == 1) {
+            if (choice == 1 || choice == 2) {
+                return choice;
+            }
+        }
+
+        printf("❌ 无效输入，请重新输入。\n\n");
     }
-
-    sscanf(input, "%d", &choice);
-    return choice;
 }
 
 
+
 // 显示订单总结并确认
-int display_order_summary(Package *pkg, const Users *user) {
+int display_order_summary(Package *pkg, const Users *user, int pickup_method) {
     printf("\n📦 订单信息总结：\n");
 
     printf("寄件人：%s（%s）\n", pkg->sender.name, pkg->sender.province);
@@ -141,13 +158,25 @@ int display_order_summary(Package *pkg, const Users *user) {
            pkg->item.volume,
            pkg->item.is_fragile ? "是" : "否");
 
-    // 运费初步计算（不含优惠券）
+    if (pickup_method == 1) {
+        printf("📌 取件方式：上门取件（将加收 5 元）\n");
+    } else if (pickup_method == 2) {
+        printf("📌 取件方式：自寄\n");
+    }
+
+    // 运费预估
     Price p = calculate_price(&pkg->item, user, pkg->sender.province, pkg->recipient.province);
+
+    if (pickup_method == 1) {
+        p.original_price += 5.0;
+        p.price += 5.0;
+    }
 
     printf("💰 运费明细：\n");
     printf("原价：%.2f 元\n", p.original_price);
     printf("会员折扣：%.2f 元\n", p.member_discount);
-    printf("当前应付（未使用优惠券）：%.2f 元\n", p.price);
+    printf("优惠券抵扣：%.2f 元\n", p.coupon_discount);
+    printf("应付金额：%.2f 元\n", p.price);
 
     printf("\n✅ 是否确认订单？ (Y: 确认, C: 更改, Q: 退出): ");
     char input[10];
@@ -163,11 +192,14 @@ int display_order_summary(Package *pkg, const Users *user) {
 
 
 
+
 // 寄快递主程序
 void handle_shipping_order(Users *user) {
     Package pkg;
     pkg.status = 1;
     memset(pkg.claim_code, 0, sizeof(pkg.claim_code));
+
+    int pickup_method = 0;
 
     while (1) {
         printf("\n📦 请输入寄件人信息：\n");
@@ -179,12 +211,13 @@ void handle_shipping_order(Users *user) {
         printf("\n📦 请输入物品信息：\n");
         input_item_info(&pkg.item);
 
-        if (select_pickup_method() == 0) {
+        pickup_method = select_pickup_method();
+        if (pickup_method == 0) {
             printf("❌ 取消订单，返回主界面。\n");
             return;
         }
 
-        int confirm = display_order_summary(&pkg, user);
+        int confirm = display_order_summary(&pkg, user, pickup_method);
         if (confirm == 0) {
             printf("❌ 订单已取消。\n");
             return;
@@ -200,10 +233,17 @@ void handle_shipping_order(Users *user) {
     pkg.package_id = read_max_order_id() + 1;
     printf("✅ 订单已创建，订单编号为：%ld\n", pkg.package_id);
 
-    // 运费计算（不含优惠券）
+    // 运费计算（基础）
     Price final_price = calculate_price(&pkg.item, user, pkg.sender.province, pkg.recipient.province);
 
-    // 查询用户可用优惠券
+    // ✅ 上门取件加价
+    if (pickup_method == 1) {
+        final_price.price += 5.0;
+        final_price.original_price += 5.0;
+        printf("🚚 上门取件服务已加收 5 元。\n");
+    }
+
+    // ✅ 查询并使用优惠券
     Coupon available[10];
     int coupon_count = 0;
     if (get_available_coupons_for_user(user->username, available, &coupon_count)) {
@@ -217,7 +257,7 @@ void handle_shipping_order(Users *user) {
         }
     }
 
-    // 支付模拟
+    // 模拟支付
     printf("应付金额为：%.2f 元\n", final_price.price);
     printf("请输入支付金额（模拟支付）: ");
     char input[20];
@@ -228,6 +268,5 @@ void handle_shipping_order(Users *user) {
     user->members.points += points;
     printf("🎉 支付成功，获得积分：%d，当前总积分：%d\n", points, user->members.points);
 
-    // 保存订单
     save_package_to_db(&pkg);
 }

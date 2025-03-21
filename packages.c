@@ -254,10 +254,10 @@ const char* get_status_text(int status) {
 }
 
 // 分页查询包裹信息
-void list_packages(int page, const char *order_by) {
+int list_packages(int page, const char *order_by) {
     if (db == NULL) {
         printf("数据库未打开！\n");
-        return;
+        return 0; // Indicate failure
     }
 
     // 验证 order_by 是否为有效的列名
@@ -281,7 +281,7 @@ void list_packages(int page, const char *order_by) {
 
     if (!column_exists) {
         printf("错误: 排序字段 '%s' 无效！\n", order_by);
-        return;
+        return 0; // Indicate failure
     }
 
     // 计算偏移量
@@ -294,7 +294,7 @@ void list_packages(int page, const char *order_by) {
     sqlite3_stmt *stmt;
     if (sqlite3_prepare_v2(db, query, -1, &stmt, 0) != SQLITE_OK) {
         printf("查询失败: %s\n", sqlite3_errmsg(db));
-        return;
+        return 0; // Indicate failure
     }
 
     system("cls");
@@ -323,6 +323,8 @@ void list_packages(int page, const char *order_by) {
     if (row_count == 0) {
         printf("没有更多数据。\n");
     }
+
+    return 1; // Indicate success
 }
 
 
@@ -425,8 +427,12 @@ void list_and_change_packages() {
 
     int page = 1;
     while (1) {
-        list_packages(page, sort_option);
-        
+        // Check if the column exists before proceeding
+        if (!list_packages(page, sort_option)) {
+            printf("排序字段无效，操作已取消。\n");
+            break;
+        }
+
         printf("\n输入 P 翻到上一页，N 翻到下一页，输入包裹 ID 进行修改 (0 退出): ");
         char input[10];
         scanf("%s", input);

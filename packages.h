@@ -42,9 +42,9 @@ void print_full_package_info(Package *new_package);
 
 //包裹查找相关
 Package find_package_by_id(const long id);
-Package* find_package_by_recipient_phone_number(const char *phone_number);
-Package* find_package_by_recipient_name(const char *name);
-Package* find_package_by_sender_name(const char *address);
+Package* find_packages_by_recipient_phone_number(const char *phone_number, int *count);
+Package* find_packages_by_recipient_name(const char *name, int *count);
+Package* find_packages_by_sender_name(const char *address, int *count);
 Package find_package_by_claim_code(const char *code);
 Package execute_single_result_query_int(sqlite3 *db, const char *query, long param);
 Package execute_single_result_query_text(sqlite3 *db, const char *query, const char *param);
@@ -52,7 +52,7 @@ Package* execute_multiple_result_query(sqlite3 *db, const char *query, const cha
 
 //包裹列举相关
 const char* get_status_text(int status);
-void list_packages(int page, const char *order_by);
+int list_packages(int page, const char *order_by);
 void update_package_info(long package_id);
 
 //主函数

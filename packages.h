@@ -1,20 +1,17 @@
 #ifndef PACKAGES_H
 #define PACKAGES_H
 
+#include "sqlite3.h"
 
-// 寄件人信息结构体
-typedef struct sender_t {
-    char name[100];
-    char address[200];
-    char phone_number[20];
-} Sender;
+#define PAGE_SIZE 10 //列举时每页展示数量
 
-// 收件人信息结构体
-typedef struct recipient_t {
-    char name[100];
-    char address[200];
+//寄件人和收件人信息结构体
+typedef struct {
+    char name[20];
+    char province[20];   // ✅ 新增：选择的省份
+    char address[50];    // 用户自填详细地址
     char phone_number[20];
-} Recipient;
+} Sender, Recipient;
 
 //物品信息结构体
 typedef struct item_t {
@@ -23,6 +20,7 @@ typedef struct item_t {
     double weight;
     double volume;
     int is_fragile;
+    char special_property[30]; // 特殊属性（如 液体、生鲜、易燃、自定义）
 } Item;
 
 
@@ -37,14 +35,27 @@ typedef struct package_t {
 } Package;
 
 //函数声明
-void save_package_to_file(Package *new_package);
+void save_package_to_db(Package *new_package);
 void print_short_package_info(Package *new_package);
 void print_full_package_info(Package *new_package);
+
+
+//包裹查找相关
 Package find_package_by_id(const long id);
-Package find_package_by_recipient_phone_number(const char *phone_number);
-Package find_package_by_recipient_name(const char *name);
-Package find_package_by_sender_name(const char *address);
+Package* find_package_by_recipient_phone_number(const char *phone_number);
+Package* find_package_by_recipient_name(const char *name);
+Package* find_package_by_sender_name(const char *address);
 Package find_package_by_claim_code(const char *code);
+Package execute_single_result_query_int(sqlite3 *db, const char *query, long param);
+Package execute_single_result_query_text(sqlite3 *db, const char *query, const char *param);
+Package* execute_multiple_result_query(sqlite3 *db, const char *query, const char *param, int *count);
 
+//包裹列举相关
+const char* get_status_text(int status);
+void list_packages(int page, const char *order_by);
+void update_package_info(long package_id);
 
+//主函数
+void list_and_change_packages();
+void search_and_modify_package();
 #endif //PACKAGES_H

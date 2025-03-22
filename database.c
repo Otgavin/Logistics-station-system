@@ -67,7 +67,7 @@ void initialize_all_tables() {
         "item_is_fragile INTEGER, status INTEGER, claim_code TEXT"
         ");";
 
-    // 4. 计价规则表（只存一行）
+    // 4. 计价规则表
     const char *create_pricing =
         "CREATE TABLE IF NOT EXISTS pricing_rules ("
         "id INTEGER PRIMARY KEY CHECK(id = 1),"
@@ -77,11 +77,33 @@ void initialize_all_tables() {
         "price_per_km REAL NOT NULL"
         ");";
 
-    // 执行每一个建表语句
-    const char *tables[] = {create_users, create_coupons, create_packages, create_pricing};
-    const char *table_names[] = {"users", "coupons", "packages", "pricing_rules"};
+    // 5. 订单表（新增）
+    const char *create_orders =
+        "CREATE TABLE IF NOT EXISTS orders ("
+        "order_id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        "package_id INTEGER UNIQUE NOT NULL,"
+        "username TEXT NOT NULL,"
+        "pickup_method INTEGER,"
+        "delivery_method INTEGER,"
+        "original_price REAL,"
+        "member_discount REAL,"
+        "coupon_discount REAL,"
+        "final_price REAL,"
+        "coupon_code TEXT,"
+        "created_at TEXT DEFAULT CURRENT_TIMESTAMP,"
+        "FOREIGN KEY(package_id) REFERENCES packages(package_id)"
+        ");";
 
-    for (int i = 0; i < 4; i++) {
+    // 所有建表语句与名称
+    const char *tables[] = {
+        create_users, create_coupons, create_packages, create_pricing, create_orders
+    };
+    const char *table_names[] = {
+        "users", "coupons", "packages", "pricing_rules", "orders"
+    };
+
+    // 创建执行
+    for (int i = 0; i < 5; i++) {
         if (sqlite3_exec(db, tables[i], 0, 0, &err) != SQLITE_OK) {
             printf("❌ 创建表 %s 失败: %s\n", table_names[i], err);
             sqlite3_free(err);

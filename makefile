@@ -2,7 +2,7 @@ CC = gcc
 CFLAGS = -Wall -g -MMD -MP -lpthread
 TARGET = logistics-station-system
 
-SRCS = main.c packages.c price.c shipping_order.c sqlite3.c database.c coupon.c
+SRCS = main.c packages.c price.c shipping_order.c sqlite3.c database.c coupon.c order.c
 OBJS = $(SRCS:.c=.o)
 DEPS = $(SRCS:.c=.d)
 

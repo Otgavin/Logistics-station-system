@@ -4,6 +4,8 @@
 #include "shipping_order.h"
 #include "packages.h"
 #include "price.h"
+#include "sqlite3.h"
+#include "order.h"
 
 extern sqlite3 *db;
 
@@ -28,13 +30,14 @@ long read_max_order_id() {
 
 // 输入寄件人信息
 void input_sender_info(Sender *sender) {
-    select_province(sender->province, sizeof(sender->province)); // 选择省份
+    
 
     printf("请输入寄件人姓名: ");
     fgets(sender->name, sizeof(sender->name), stdin);
     sender->name[strcspn(sender->name, "\n")] = '\0';
-
-    printf("请输入寄件人地址: ");
+    
+    select_province(sender->province, sizeof(sender->province)); // 选择省份
+    printf("请输入寄件人具体地址: ");
     fgets(sender->address, sizeof(sender->address), stdin);
     sender->address[strcspn(sender->address, "\n")] = '\0';
 
@@ -45,13 +48,13 @@ void input_sender_info(Sender *sender) {
 
 // 输入收件人信息
 void input_recipient_info(Recipient *recipient) {
-    select_province(recipient->province, sizeof(recipient->province)); // 选择省份
-
+    
     printf("请输入收件人姓名: ");
     fgets(recipient->name, sizeof(recipient->name), stdin);
     recipient->name[strcspn(recipient->name, "\n")] = '\0';
-
-    printf("请输入收件人地址: ");
+    
+    select_province(recipient->province, sizeof(recipient->province)); // 选择省份
+    printf("请输入收件人具体地址: ");
     fgets(recipient->address, sizeof(recipient->address), stdin);
     recipient->address[strcspn(recipient->address, "\n")] = '\0';
 
@@ -143,7 +146,7 @@ int select_pickup_method() {
 
 
 // 显示订单总结并确认
-int display_order_summary(Package *pkg, const Users *user, int pickup_method) {
+int display_order_summary(Package *pkg, int pickup_method) {
     printf("\n📦 订单信息总结：\n");
 
     printf("寄件人：%s（%s）\n", pkg->sender.name, pkg->sender.province);
@@ -164,19 +167,6 @@ int display_order_summary(Package *pkg, const Users *user, int pickup_method) {
         printf("📌 取件方式：自寄\n");
     }
 
-    // 运费预估
-    Price p = calculate_price(&pkg->item, user, pkg->sender.province, pkg->recipient.province);
-
-    if (pickup_method == 1) {
-        p.original_price += 5.0;
-        p.price += 5.0;
-    }
-
-    printf("💰 运费明细：\n");
-    printf("原价：%.2f 元\n", p.original_price);
-    printf("会员折扣：%.2f 元\n", p.member_discount);
-    printf("优惠券抵扣：%.2f 元\n", p.coupon_discount);
-    printf("应付金额：%.2f 元\n", p.price);
 
     printf("\n✅ 是否确认订单？ (Y: 确认, C: 更改, Q: 退出): ");
     char input[10];
@@ -217,7 +207,7 @@ void handle_shipping_order(Users *user) {
             return;
         }
 
-        int confirm = display_order_summary(&pkg, user, pickup_method);
+        int confirm = display_order_summary(&pkg, pickup_method);
         if (confirm == 0) {
             printf("❌ 订单已取消。\n");
             return;
@@ -229,23 +219,22 @@ void handle_shipping_order(Users *user) {
         }
     }
 
-    // 生成订单号
     pkg.package_id = read_max_order_id() + 1;
     printf("✅ 订单已创建，订单编号为：%ld\n", pkg.package_id);
 
-    // 运费计算（基础）
     Price final_price = calculate_price(&pkg.item, user, pkg.sender.province, pkg.recipient.province);
 
-    // ✅ 上门取件加价
+    
     if (pickup_method == 1) {
         final_price.price += 5.0;
         final_price.original_price += 5.0;
         printf("🚚 上门取件服务已加收 5 元。\n");
     }
 
-    // ✅ 查询并使用优惠券
     Coupon available[10];
     int coupon_count = 0;
+    char used_coupon_code[20] = "";
+
     if (get_available_coupons_for_user(user->username, available, &coupon_count)) {
         int selected = prompt_user_choose_coupon(available, coupon_count);
         if (selected >= 0) {
@@ -253,20 +242,26 @@ void handle_shipping_order(Users *user) {
             final_price.coupon_discount = discount;
             final_price.price -= discount;
             mark_coupon_as_used(available[selected].code);
+            strncpy(used_coupon_code, available[selected].code, sizeof(used_coupon_code));
             printf("🎫 使用优惠券 \"%s\"，优惠 %.2f 元\n", available[selected].code, discount);
         }
     }
 
-    // 模拟支付
-    printf("应付金额为：%.2f 元\n", final_price.price);
-    printf("请输入支付金额（模拟支付）: ");
+
+    printf("\n💰 运费明细：\n");
+    printf("原价：%.2f 元\n", final_price.original_price);
+    printf("会员折扣：%.2f 元\n", final_price.member_discount);
+    printf("优惠券抵扣：%.2f 元\n", final_price.coupon_discount);
+    printf("应付金额：%.2f 元\n", final_price.price);
+
+    printf("\n请输入支付金额（模拟支付）: ");
     char input[20];
     fgets(input, sizeof(input), stdin);
 
-    // 积分处理
     int points = (int)final_price.price;
     user->members.points += points;
     printf("🎉 支付成功，获得积分：%d，当前总积分：%d\n", points, user->members.points);
 
     save_package_to_db(&pkg);
+    create_order_for_package(&pkg, user, pickup_method, 0, final_price, used_coupon_code);
 }

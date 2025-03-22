@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 #include "shipping_order.h"
 #include "packages.h"
 #include "price.h"
@@ -27,42 +28,134 @@ long read_max_order_id() {
     return (max_id > 0) ? max_id : 1;  // 确保最小订单编号
 }
 
+// 检查输入的合法性
+int validate_input(const char *input, int min_length, int max_length, int numeric_only) {
+    // Check for NULL input
+    if (input == NULL) {
+        return 0;
+    }
+    
+    int len = strlen(input);
+    
+    // Check length constraints
+    if (len < min_length || len > max_length) {
+        return 0;
+    }
+    
+    // Check if input only contains whitespace
+    if (min_length > 0) {
+        int only_whitespace = 1;
+        for (int i = 0; i < len; i++) {
+            if (!isspace(input[i])) {
+                only_whitespace = 0;
+                break;
+            }
+        }
+        if (only_whitespace) {
+            return 0;
+        }
+    }
+    
+    // Check numeric validation if required
+    if (numeric_only) {
+        // Allow leading '+' for phone numbers
+        int start_idx = (len > 0 && input[0] == '+') ? 1 : 0;
+        
+        for (int i = start_idx; i < len; i++) {
+            if (!isdigit(input[i])) {
+                return 0;
+            }
+        }
+    }
+    
+    return 1;
+}
 
-// 输入寄件人信息
+// 单独输入并验证姓名
+int input_and_validate_name(char *name, size_t size, const char *person_type) {
+    printf("请输入%s姓名: ", person_type);
+    fgets(name, size, stdin);
+    name[strcspn(name, "\n")] = '\0';
+    if (!validate_input(name, 1, size - 1, 0)) {
+        printf("❌ 姓名不能为空或过长，请重新输入。\n");
+        return 0;
+    }
+    return 1;
+}
+
+// 单独输入并验证地址
+int input_and_validate_address(char *address, size_t size) {
+    printf("请输入具体地址: ");
+    fgets(address, size, stdin);
+    address[strcspn(address, "\n")] = '\0';
+    if (!validate_input(address, 1, size - 1, 0)) {
+        printf("❌ 地址不能为空或过长，请重新输入。\n");
+        return 0;
+    }
+    return 1;
+}
+
+// 单独输入并验证电话号码
+int input_and_validate_phone(char *phone, size_t size) {
+    printf("请输入手机号: ");
+    fgets(phone, size, stdin);
+    phone[strcspn(phone, "\n")] = '\0';
+    if (!validate_input(phone, 7, 11, 1)) {
+        printf("❌ 手机号无效，请输入7-11位数字。\n");
+        return 0;
+    }
+    return 1;
+}
+
+// 输入寄件人信息（改进版）
 void input_sender_info(Sender *sender) {
+    int name_valid = 0;
+    int province_valid = 0;
+    int address_valid = 0;
+    int phone_valid = 0;
     
-
-    printf("请输入寄件人姓名: ");
-    fgets(sender->name, sizeof(sender->name), stdin);
-    sender->name[strcspn(sender->name, "\n")] = '\0';
+    while (!name_valid) {
+        name_valid = input_and_validate_name(sender->name, sizeof(sender->name), "寄件人");
+    }
     
-    select_province(sender->province, sizeof(sender->province)); // 选择省份
-    printf("请输入寄件人具体地址: ");
-    fgets(sender->address, sizeof(sender->address), stdin);
-    sender->address[strcspn(sender->address, "\n")] = '\0';
-
-    printf("请输入寄件人手机号: ");
-    fgets(sender->phone_number, sizeof(sender->phone_number), stdin);
-    sender->phone_number[strcspn(sender->phone_number, "\n")] = '\0';
+    while (!province_valid) {
+        select_province(sender->province, sizeof(sender->province)); // 选择省份
+        province_valid = 1; // 省份选择总是有效的，因为有默认值
+    }
+    
+    while (!address_valid) {
+        address_valid = input_and_validate_address(sender->address, sizeof(sender->address));
+    }
+    
+    while (!phone_valid) {
+        phone_valid = input_and_validate_phone(sender->phone_number, sizeof(sender->phone_number));
+    }
 }
 
-// 输入收件人信息
+// 输入收件人信息（改进版）
 void input_recipient_info(Recipient *recipient) {
+    int name_valid = 0;
+    int province_valid = 0;
+    int address_valid = 0;
+    int phone_valid = 0;
     
-    printf("请输入收件人姓名: ");
-    fgets(recipient->name, sizeof(recipient->name), stdin);
-    recipient->name[strcspn(recipient->name, "\n")] = '\0';
+    while (!name_valid) {
+        name_valid = input_and_validate_name(recipient->name, sizeof(recipient->name), "收件人");
+    }
     
-    select_province(recipient->province, sizeof(recipient->province)); // 选择省份
-    printf("请输入收件人具体地址: ");
-    fgets(recipient->address, sizeof(recipient->address), stdin);
-    recipient->address[strcspn(recipient->address, "\n")] = '\0';
-
-    printf("请输入收件人手机号: ");
-    fgets(recipient->phone_number, sizeof(recipient->phone_number), stdin);
-    recipient->phone_number[strcspn(recipient->phone_number, "\n")] = '\0';
+    while (!province_valid) {
+        select_province(recipient->province, sizeof(recipient->province)); // 选择省份
+        province_valid = 1; // 省份选择总是有效的，因为有默认值
+    }
+    
+    while (!address_valid) {
+        address_valid = input_and_validate_address(recipient->address, sizeof(recipient->address));
+    }
+    
+    while (!phone_valid) {
+        phone_valid = input_and_validate_phone(recipient->phone_number, sizeof(recipient->phone_number));
+    }
 }
-
 
 void select_province(char *province, size_t size) {
     printf("📍 请选择省份：\n");
@@ -84,30 +177,98 @@ void select_province(char *province, size_t size) {
     }
 }
 
-
-// 输入物品信息（重量，体积，特殊属性等）
-void input_item_info(Item *item) {
+// 输入并验证物品类型
+int input_and_validate_item_type(char *type, size_t size) {
     printf("请输入物品类型: ");
-    fgets(item->type, sizeof(item->type), stdin);
-    item->type[strcspn(item->type, "\n")] = 0;
+    fgets(type, size, stdin);
+    type[strcspn(type, "\n")] = '\0';
+    if (strlen(type) == 0) {
+        printf("❌ 物品类型不能为空，请重新输入。\n");
+        return 0;
+    }
+    return 1;
+}
 
+// 输入并验证物品名称
+int input_and_validate_item_name(char *name, size_t size) {
     printf("请输入物品名称: ");
-    fgets(item->name, sizeof(item->name), stdin);
-    item->name[strcspn(item->name, "\n")] = 0;
+    fgets(name, size, stdin);
+    name[strcspn(name, "\n")] = '\0';
+    if (strlen(name) == 0) {
+        printf("❌ 物品名称不能为空，请重新输入。\n");
+        return 0;
+    }
+    return 1;
+}
 
+// 输入并验证物品重量
+int input_and_validate_item_weight(double *weight) {
     printf("请输入物品重量 (kg): ");
-    scanf("%lf", &item->weight);
+    if (scanf("%lf", weight) != 1 || *weight <= 0 || *weight > 1000) {
+        printf("❌ 重量输入无效，请重新输入。\n");
+        while (getchar() != '\n'); // 清除缓冲区
+        return 0;
+    }
+    while (getchar() != '\n'); // 清除缓冲区
+    return 1;
+}
 
+// 输入并验证物品体积
+int input_and_validate_item_volume(double *volume) {
     printf("请输入物品体积 (立方米): ");
-    scanf("%lf", &item->volume);
+    if (scanf("%lf", volume) != 1 || *volume <= 0 || *volume > 100) {
+        printf("❌ 体积输入无效，请重新输入。\n");
+        while (getchar() != '\n'); // 清除缓冲区
+        return 0;
+    }
+    while (getchar() != '\n'); // 清除缓冲区
+    return 1;
+}
 
+// 输入并验证物品是否易碎
+int input_and_validate_fragile(int *is_fragile) {
     char fragile_input;
     printf("该物品是否易碎? (Y/N): ");
-    getchar();
     scanf("%c", &fragile_input);
-    getchar();
-    item->is_fragile = (fragile_input == 'Y' || fragile_input == 'y') ? 1 : 0;
+    while (getchar() != '\n'); // 清除缓冲区
+    
+    if (fragile_input != 'Y' && fragile_input != 'y' && fragile_input != 'N' && fragile_input != 'n') {
+        printf("❌ 输入无效，请输入 Y 或 N。\n");
+        return 0;
+    }
+    
+    *is_fragile = (fragile_input == 'Y' || fragile_input == 'y') ? 1 : 0;
+    return 1;
+}
 
+// 输入物品信息（改进版）
+void input_item_info(Item *item) {
+    int type_valid = 0;
+    int name_valid = 0;
+    int weight_valid = 0;
+    int volume_valid = 0;
+    int fragile_valid = 0;
+    
+    while (!type_valid) {
+        type_valid = input_and_validate_item_type(item->type, sizeof(item->type));
+    }
+    
+    while (!name_valid) {
+        name_valid = input_and_validate_item_name(item->name, sizeof(item->name));
+    }
+    
+    while (!weight_valid) {
+        weight_valid = input_and_validate_item_weight(&item->weight);
+    }
+    
+    while (!volume_valid) {
+        volume_valid = input_and_validate_item_volume(&item->volume);
+    }
+    
+    while (!fragile_valid) {
+        fragile_valid = input_and_validate_fragile(&item->is_fragile);
+    }
+    
     select_special_property(item->special_property, sizeof(item->special_property));
 }
 
@@ -143,8 +304,6 @@ int select_pickup_method() {
     }
 }
 
-
-
 // 显示订单总结并确认
 int display_order_summary(Package *pkg, int pickup_method) {
     printf("\n📦 订单信息总结：\n");
@@ -167,7 +326,6 @@ int display_order_summary(Package *pkg, int pickup_method) {
         printf("📌 取件方式：自寄\n");
     }
 
-
     printf("\n✅ 是否确认订单？ (Y: 确认, C: 更改, Q: 退出): ");
     char input[10];
     fgets(input, sizeof(input), stdin);
@@ -176,12 +334,6 @@ int display_order_summary(Package *pkg, int pickup_method) {
     if (input[0] == 'C' || input[0] == 'c') return 2;
     return 0;
 }
-
-
-
-
-
-
 
 // 寄快递主程序
 void handle_shipping_order(Users *user) {
@@ -224,7 +376,6 @@ void handle_shipping_order(Users *user) {
 
     Price final_price = calculate_price(&pkg.item, user, pkg.sender.province, pkg.recipient.province);
 
-    
     if (pickup_method == 1) {
         final_price.price += 5.0;
         final_price.original_price += 5.0;
@@ -246,7 +397,6 @@ void handle_shipping_order(Users *user) {
             printf("🎫 使用优惠券 \"%s\"，优惠 %.2f 元\n", available[selected].code, discount);
         }
     }
-
 
     printf("\n💰 运费明细：\n");
     printf("原价：%.2f 元\n", final_price.original_price);

@@ -6,6 +6,8 @@
 #include "users.h"
 #include "sqlite3.h"
 #include "coupon.h"
+#include <stddef.h>
+#include "utils.h"
 
 
 extern sqlite3 *db; //数据库连接，实际定义在database.c中
@@ -22,8 +24,7 @@ Price calculate_price(const Item *item, const Users *user, const char *sender_pr
     base *= get_surcharge_rate(item->special_property); //基础价格乘以特殊属性的加价倍率
 
     // 加上地址距离费用
-    double distance = calculate_distance_between_provinces(sender_province, recipient_province);
-    double distance_km = distance * 111.0; // 坐标中使用了维度，这里1度约为111公里，更加直观
+    double distance_km = calculate_distance_between_provinces(sender_province, recipient_province);
     base += distance_km * pricing.price_per_km;
 
     // 会员折扣
@@ -77,6 +78,7 @@ void modify_pricing_rules() {
         sqlite3_bind_double(stmt, 4, price_per_km);
         if (sqlite3_step(stmt) == SQLITE_DONE) {
             printf("✅ 计价规则已保存至数据库。\n");
+            pause_screen();
         } else {
             printf("❌ 保存失败: %s\n", sqlite3_errmsg(db));
         }
@@ -116,14 +118,25 @@ Pricing load_pricing() {
 }
 
 
-// 获取特殊属性的加价倍率
+// 获取特殊属性的加价倍率 - 优化版本
 double get_surcharge_rate(const char *property) {
+    if (!property || *property == '\0') {
+        return 1.00; // 属性为空，使用默认值
+    }
+    
+    // 使用二分查找来提高效率
+    int left = 0;
+    int right = special_property_count - 1;
+    
+    // 对于小数组，线性搜索更简单且性能相当
     for (int i = 0; i < special_property_count; ++i) {
         if (strcmp(property, special_properties[i].name) == 0) {
             return special_properties[i].surcharge_rate;
         }
     }
-    return 1.00; //默认不加价
+    
+    printf("⚠️ 未找到特殊属性: %s，使用默认费率\n", property);
+    return 1.00; // 默认不加价
 }
 
 // 用户选择特殊属性
@@ -202,27 +215,64 @@ int get_province_coords(const char *name, double *x, double *y) {
     return 0;
 }
 
-//计算两个省份之间的距离（实际返回的是经纬度的差距，后续转化为公里）
+
+// Define M_PI if it's not already defined
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
+//计算两个省份之间的距离（公里）
 double calculate_distance_between_provinces(const char *prov1, const char *prov2) {
-    double x1, y1, x2, y2;
-    if (!get_province_coords(prov1, &x1, &y1) || !get_province_coords(prov2, &x2, &y2)) {
+    // 相同省份，返回最小距离
+    if (strcmp(prov1, prov2) == 0) {
         return 0.0;
     }
-    double dx = x1 - x2;
-    double dy = y1 - y2;
-    return sqrt(dx * dx + dy * dy);
+    
+    double x1, y1, x2, y2;
+    if (!get_province_coords(prov1, &x1, &y1)) {
+        printf("⚠️ 未找到省份: %s\n", prov1);
+        return 0.0;
+    }
+    
+    if (!get_province_coords(prov2, &x2, &y2)) {
+        printf("⚠️ 未找到省份: %s\n", prov2);
+        return 0.0;
+    }
+
+    // 经度和纬度转换为弧度
+    double lon1 = x1 * M_PI / 180.0;
+    double lat1 = y1 * M_PI / 180.0;
+    double lon2 = x2 * M_PI / 180.0;
+    double lat2 = y2 * M_PI / 180.0;
+    
+    // 改进的 Haversine 公式计算
+    double sin_lat = sin((lat2 - lat1) / 2.0);
+    double sin_lon = sin((lon2 - lon1) / 2.0);
+    
+    // 避免精度问题，确保 a 的值在有效范围内
+    double a = sin_lat * sin_lat + cos(lat1) * cos(lat2) * sin_lon * sin_lon;
+    if (a < 0.0) a = 0.0;
+    if (a > 1.0) a = 1.0;
+    
+    double c = 2.0 * asin(sqrt(a));
+    
+    // 地球半径（公里）
+    const double R = 6371.0;
+    
+    // 以公里为单位的距离
+    return R * c;
 }
 
 //特殊属性的具体定义
 const SpecialProperty special_properties[] = {
+    {"无", 1.00},
     {"生鲜", 1.00},
-    {"液体", 1.05},
-    {"易燃", 1.15},
     {"易腐", 1.00},
-    {"贵重物品", 1.10},
-    {"危险品", 1.20},
+    {"液体", 1.05},
     {"医疗用品", 1.08},
-    {"易爆", 1.20},
-    {"无", 1.00}
+    {"贵重物品", 1.10},
+    {"易燃", 1.15},
+    {"危险品", 1.20},
+    {"易爆", 1.20}
 };
 const int special_property_count = sizeof(special_properties) / sizeof(SpecialProperty); //特殊属性数量

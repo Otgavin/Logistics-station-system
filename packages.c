@@ -4,6 +4,17 @@
 #include "sqlite3.h"
 #include "database.h"
 #include <stdlib.h>
+#include <ctype.h>
+#include "utils.h"
+
+//辅助安全输入
+void safe_input(char *buffer, int size) {
+    if (fgets(buffer, size, stdin)) {
+        buffer[strcspn(buffer, "\n")] = '\0'; // Remove trailing newline
+    } else {
+        buffer[0] = '\0'; // Clear buffer on failure
+    }
+}
 
 //保存包裹结构体到db
 void save_package_to_db(Package *new_package) {
@@ -65,7 +76,7 @@ void save_package_to_db(Package *new_package) {
 
 //打印包裹信息
 void print_short_package_info(Package *new_package) {
-    system("cls");
+    clear_screen();
     printf("---------------------------------------------------------------");
     printf("订单编号:  %ld\n", new_package->package_id);
     printf("寄件人姓名:  %s\n", new_package->sender.name);
@@ -80,7 +91,7 @@ void print_short_package_info(Package *new_package) {
 
 //打印完整包裹信息
 void print_full_package_info(Package *new_package) {
-    system("cls");
+    clear_screen();
     printf("---------------------------------------------------------------");
     printf("订单编号:   %ld\n", new_package->package_id);
     printf("寄件人姓名:  %s\n", new_package->sender.name);
@@ -116,7 +127,6 @@ Package find_package_by_claim_code(const char *code) {
     return execute_single_result_query_text(db, query, code);
 }
 
-
 //根据收件人电话号查询，返回包裹结构体数组
 Package* find_packages_by_recipient_phone_number(const char *phone_number, int *count) {
     const char *query = "SELECT * FROM packages WHERE recipient_phone = ?;";
@@ -148,20 +158,7 @@ Package execute_single_result_query_int(sqlite3 *db, const char *query, long par
     sqlite3_bind_int64(stmt, 1, param);  // 绑定 package_id 为 INTEGER
 
     if (sqlite3_step(stmt) == SQLITE_ROW) {
-        package.package_id = sqlite3_column_int64(stmt, 0);
-        strcpy(package.sender.name, (const char *)sqlite3_column_text(stmt, 1));
-        strcpy(package.sender.address, (const char *)sqlite3_column_text(stmt, 2));
-        strcpy(package.sender.phone_number, (const char *)sqlite3_column_text(stmt, 3));
-        strcpy(package.recipient.name, (const char *)sqlite3_column_text(stmt, 4));
-        strcpy(package.recipient.address, (const char *)sqlite3_column_text(stmt, 5));
-        strcpy(package.recipient.phone_number, (const char *)sqlite3_column_text(stmt, 6));
-        strcpy(package.item.type, (const char *)sqlite3_column_text(stmt, 7));
-        strcpy(package.item.name, (const char *)sqlite3_column_text(stmt, 8));
-        package.item.weight = sqlite3_column_double(stmt, 9);
-        package.item.volume = sqlite3_column_double(stmt, 10);
-        package.item.is_fragile = sqlite3_column_int(stmt, 11);
-        package.status = sqlite3_column_int(stmt, 12);
-        strcpy(package.claim_code, (const char *)sqlite3_column_text(stmt, 13));
+        populate_package_from_stmt(&package, stmt);
     } else {
         printf("❌ 查询失败或无匹配结果。\n");
     }
@@ -183,20 +180,7 @@ Package execute_single_result_query_text(sqlite3 *db, const char *query, const c
     sqlite3_bind_text(stmt, 1, param, -1, SQLITE_STATIC);  // 绑定 claim_code 为 TEXT
 
     if (sqlite3_step(stmt) == SQLITE_ROW) {
-        package.package_id = sqlite3_column_int64(stmt, 0);
-        strcpy(package.sender.name, (const char *)sqlite3_column_text(stmt, 1));
-        strcpy(package.sender.address, (const char *)sqlite3_column_text(stmt, 2));
-        strcpy(package.sender.phone_number, (const char *)sqlite3_column_text(stmt, 3));
-        strcpy(package.recipient.name, (const char *)sqlite3_column_text(stmt, 4));
-        strcpy(package.recipient.address, (const char *)sqlite3_column_text(stmt, 5));
-        strcpy(package.recipient.phone_number, (const char *)sqlite3_column_text(stmt, 6));
-        strcpy(package.item.type, (const char *)sqlite3_column_text(stmt, 7));
-        strcpy(package.item.name, (const char *)sqlite3_column_text(stmt, 8));
-        package.item.weight = sqlite3_column_double(stmt, 9);
-        package.item.volume = sqlite3_column_double(stmt, 10);
-        package.item.is_fragile = sqlite3_column_int(stmt, 11);
-        package.status = sqlite3_column_int(stmt, 12);
-        strcpy(package.claim_code, (const char *)sqlite3_column_text(stmt, 13));
+        populate_package_from_stmt(&package, stmt);
     } else {
         printf("❌ 查询失败或无匹配结果。\n");
     }
@@ -211,28 +195,25 @@ Package* execute_multiple_result_query(sqlite3 *db, const char *query, const cha
     Package *packages = NULL;
     *count = 0;
 
-    sqlite3_prepare_v2(db, query, -1, &stmt, 0);
+    if (sqlite3_prepare_v2(db, query, -1, &stmt, 0) != SQLITE_OK) {
+        printf("❌ SQL 预处理失败: %s\n", sqlite3_errmsg(db));
+        return NULL;
+    }
+
     sqlite3_bind_text(stmt, 1, param, -1, SQLITE_STATIC);
 
     while (sqlite3_step(stmt) == SQLITE_ROW) {
-        packages = realloc(packages, (*count + 1) * sizeof(Package));
+        Package *temp = realloc(packages, (*count + 1) * sizeof(Package));
+        if (!temp) {
+            printf("❌ 内存分配失败。\n");
+            free(packages);
+            sqlite3_finalize(stmt);
+            return NULL;
+        }
+        packages = temp;
+
         Package *package = &packages[*count];
-
-        package->package_id = sqlite3_column_int64(stmt, 0);
-        strcpy(package->sender.name, (const char *)sqlite3_column_text(stmt, 1));
-        strcpy(package->sender.address, (const char *)sqlite3_column_text(stmt, 2));
-        strcpy(package->sender.phone_number, (const char *)sqlite3_column_text(stmt, 3));
-        strcpy(package->recipient.name, (const char *)sqlite3_column_text(stmt, 4));
-        strcpy(package->recipient.address, (const char *)sqlite3_column_text(stmt, 5));
-        strcpy(package->recipient.phone_number, (const char *)sqlite3_column_text(stmt, 6));
-        strcpy(package->item.type, (const char *)sqlite3_column_text(stmt, 7));
-        strcpy(package->item.name, (const char *)sqlite3_column_text(stmt, 8));
-        package->item.weight = sqlite3_column_double(stmt, 9);
-        package->item.volume = sqlite3_column_double(stmt, 10);
-        package->item.is_fragile = sqlite3_column_int(stmt, 11);
-        package->status = sqlite3_column_int(stmt, 12);
-        strcpy(package->claim_code, (const char *)sqlite3_column_text(stmt, 13));
-
+        populate_package_from_stmt(package, stmt);
         (*count)++;
     }
 
@@ -240,6 +221,23 @@ Package* execute_multiple_result_query(sqlite3 *db, const char *query, const cha
     return packages;
 }
 
+// 从SQLite结果集填充Package结构体
+void populate_package_from_stmt(Package *package, sqlite3_stmt *stmt) {
+    package->package_id = sqlite3_column_int64(stmt, 0);
+    strcpy(package->sender.name, (const char *)sqlite3_column_text(stmt, 1));
+    strcpy(package->sender.address, (const char *)sqlite3_column_text(stmt, 2));
+    strcpy(package->sender.phone_number, (const char *)sqlite3_column_text(stmt, 3));
+    strcpy(package->recipient.name, (const char *)sqlite3_column_text(stmt, 4));
+    strcpy(package->recipient.address, (const char *)sqlite3_column_text(stmt, 5));
+    strcpy(package->recipient.phone_number, (const char *)sqlite3_column_text(stmt, 6));
+    strcpy(package->item.type, (const char *)sqlite3_column_text(stmt, 7));
+    strcpy(package->item.name, (const char *)sqlite3_column_text(stmt, 8));
+    package->item.weight = sqlite3_column_double(stmt, 9);
+    package->item.volume = sqlite3_column_double(stmt, 10);
+    package->item.is_fragile = sqlite3_column_int(stmt, 11);
+    package->status = sqlite3_column_int(stmt, 12);
+    strcpy(package->claim_code, (const char *)sqlite3_column_text(stmt, 13));
+}
 
 // 获取订单状态的文本表示
 const char* get_status_text(int status) {
@@ -297,7 +295,7 @@ int list_packages(int page, const char *order_by) {
         return 0; // Indicate failure
     }
 
-    system("cls");
+    clear_screen();
     printf("\n--- 包裹列表 (第 %d 页) ---\n", page);
     printf("+------------+------------------+------------------+----------+------------+\n");
     printf("| 订单编号   | 发件人           | 收件人           | 状态     | 取件码     |\n");
@@ -327,6 +325,22 @@ int list_packages(int page, const char *order_by) {
     return 1; // Indicate success
 }
 
+//更新包裹状态
+int update_package_status(long package_id, int new_status) {
+    const char *sql = "UPDATE packages SET status = ? WHERE package_id = ?";
+    sqlite3_stmt *stmt;
+
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, 0) == SQLITE_OK) {
+        sqlite3_bind_int(stmt, 1, new_status);
+        sqlite3_bind_int64(stmt, 2, package_id);
+
+        int rc = sqlite3_step(stmt);
+        sqlite3_finalize(stmt);
+        return rc == SQLITE_DONE;
+    }
+
+    return 0;
+}
 
 // 更新包裹信息（用户选择要修改的字段）
 void update_package_info(long package_id) {
@@ -358,8 +372,12 @@ void update_package_info(long package_id) {
         printf("13. 取件码\n");
         printf("0. 退出更新\n");
         printf("请输入你的选择: ");
-        scanf("%d", &choice);
-        getchar(); // 处理换行符
+        if (scanf("%d", &choice) != 1) {
+            printf("❌ 输入无效，请输入数字。\n");
+            while (getchar() != '\n'); // Clear input buffer
+            continue;
+        }
+        getchar(); // Clear newline character
 
         if (choice == 0) {
             printf("更新已取消。\n");
@@ -386,12 +404,21 @@ void update_package_info(long package_id) {
         }
 
         printf("请输入新的值: ");
-        if (choice == 9 || choice == 10) { // 处理数值类型
-            scanf("%lf", &new_double_value);
-        } else if (choice == 11 || choice == 12) { // 处理整数类型
-            scanf("%d", &new_int_value);
+        if (choice == 9 || choice == 10) { // Handle numeric input
+            if (scanf("%lf", &new_double_value) != 1) {
+                printf("❌ 输入无效，请输入数字。\n");
+                while (getchar() != '\n'); // Clear input buffer
+                continue;
+            }
+        } else if (choice == 11 || choice == 12) { // Handle integer input
+            if (scanf("%d", &new_int_value) != 1) {
+                printf("❌ 输入无效，请输入数字。\n");
+                while (getchar() != '\n'); // Clear input buffer
+                continue;
+            }
         } else {
-            scanf(" %[^\n]", new_value);
+            getchar(); // Clear newline character
+            safe_input(new_value, sizeof(new_value));
         }
 
         sqlite3_stmt *stmt;
@@ -430,6 +457,7 @@ void list_and_change_packages() {
         // Check if the column exists before proceeding
         if (!list_packages(page, sort_option)) {
             printf("排序字段无效，操作已取消。\n");
+            pause_screen();
             break;
         }
 
@@ -440,17 +468,134 @@ void list_and_change_packages() {
         if (input[0] == 'P' || input[0] == 'p') {
             if (page > 1) page--;
         } else if (input[0] == 'N' || input[0] == 'n') {
-           page++;
+            page++;
         } else {
             long package_id = atol(input);
             if (package_id == 0) break;
+            
+            // 验证包裹ID是否存在
+            Package pkg = find_package_by_id(package_id);
+            if (pkg.package_id <= 0) {
+                printf("❌ 包裹ID %ld 不存在!\n", package_id);
+                printf("按回车键继续...");
+                getchar(); // 清除回车
+                getchar(); // 等待用户按回车
+                continue;
+            }
             update_package_info(package_id);
         }
     }
- }
+}
 
+void display_paginated_packages(Package *packages, int count, int *page) {
+    if (packages == NULL || count <= 0) {
+        printf("❌ 没有可显示的包裹数据\n");
+        return;
+    }
+    
+    char page_command;
+    do {
+        // 修正页码范围
+        int max_page = (count - 1) / PAGE_SIZE;
+        if (*page < 0) *page = 0;
+        if (*page > max_page) *page = max_page;
 
- //查询并修改包裹信息主函数
+        clear_screen();
+        printf("\n✅ 找到 %d 条匹配的订单 (第 %d 页 / 共 %d 页)：\n", 
+               count, *page + 1, max_page + 1);
+        printf("+------------+------------------+------------------+----------+------------+\n");
+        printf("| 订单编号   | 发件人           | 收件人           | 状态     | 取件码     |\n");
+        printf("+------------+------------------+------------------+----------+------------+\n");
+
+        int start_index = (*page) * PAGE_SIZE;
+        int end_index = start_index + PAGE_SIZE;
+        if (end_index > count) {
+            end_index = count;
+        }
+
+        for (int i = start_index; i < end_index; i++) {
+            printf("| %-10ld | %-19s | %-19s | %-11s | %-10s |\n",
+                   packages[i].package_id,
+                   packages[i].sender.name,
+                   packages[i].recipient.name,
+                   get_status_text(packages[i].status),
+                   packages[i].claim_code);
+        }
+
+        printf("+------------+------------------+------------------+----------+------------+\n");
+
+        // 改进导航提示，增加按钮状态提示
+        if (*page > 0) {
+            printf("[P] 上一页 ");
+        } else {
+            printf("          ");
+        }
+        
+        if (*page < max_page) {
+            printf("[N] 下一页 ");
+        } else {
+            printf("          ");
+        }
+        
+        printf("[Q] 退出 [L] 查看详情 [数字] 输入ID直接查看\n");
+        printf("请输入指令: ");
+        
+        char input[20] = {0};
+        if (fgets(input, sizeof(input), stdin) == NULL) {
+            continue;
+        }
+        
+        input[strcspn(input, "\n")] = '\0'; // 移除换行符
+        page_command = input[0];
+
+        if (page_command == 'N' || page_command == 'n') {
+            if (*page < max_page) (*page)++;
+        } else if (page_command == 'P' || page_command == 'p') {
+            if (*page > 0) (*page)--;
+        } else if (page_command == 'L' || page_command == 'l') {
+            long package_id;
+            printf("请输入要查看的订单编号: ");
+            
+            char id_input[20] = {0};
+            if (fgets(id_input, sizeof(id_input), stdin) != NULL) {
+                id_input[strcspn(id_input, "\n")] = '\0';
+                package_id = atol(id_input);
+                
+                if (package_id > 0) {
+                    Package package = find_package_by_id(package_id);
+                    if (package.package_id > 0) {
+                        print_full_package_info(&package);
+                        printf("\n按回车键继续...");
+                        getchar();
+                    } else {
+                        printf("❌ 未找到ID为 %ld 的包裹\n", package_id);
+                        printf("按回车键继续...");
+                        getchar();
+                    }
+                }
+            }
+        } else if (isdigit(page_command)) {
+            // 直接处理数字输入作为包裹ID
+            long package_id = atol(input);
+            if (package_id > 0) {
+                Package package = find_package_by_id(package_id);
+                if (package.package_id > 0) {
+                    print_full_package_info(&package);
+                    printf("\n按回车键继续...");
+                    getchar();
+                } else {
+                    printf("❌ 未找到ID为 %ld 的包裹\n", package_id);
+                    printf("按回车键继续...");
+                    getchar();
+                }
+            }
+        }
+    } while (page_command != 'Q' && page_command != 'q');
+    
+    // 注意：确保调用此函数的代码负责释放packages内存
+}
+
+//查询并修改包裹信息主函数
 void search_and_modify_package() {
     int choice;
     char search_input[50];
@@ -470,22 +615,25 @@ void search_and_modify_package() {
         printf("5. 按寄件人姓名查询\n");
         printf("0. 退出\n");
         printf("请输入你的选择: ");
-        scanf("%d", &choice);
-        getchar();  // 处理换行符
+        if (scanf("%d", &choice) != 1) {
+            printf("❌ 输入无效，请输入数字。\n");
+            while (getchar() != '\n'); // Clear input buffer
+            continue;
+        }
+        getchar();  // Clear newline character
         
-        count = 0;  // 重置查询数量
-        package.package_id = 0; // 防止错误进入修改逻辑
-        page = 0;  // 从第一页开始
+        count = 0;  // Reset query count
+        package.package_id = 0; // Prevent incorrect modification logic
+        page = 0;  // Start from the first page
 
         switch (choice) {
             case 1:
                 printf("请输入订单编号: ");
-                scanf("%s", search_input);
+                safe_input(search_input, sizeof(search_input));
                 package = find_package_by_id(atol(search_input));
                 if (package.package_id > 0) {
                     print_full_package_info(&package);
                     printf("按Enter键继续");
-                    getchar();
                     getchar();
                     single = 1;
                 } else {
@@ -496,12 +644,11 @@ void search_and_modify_package() {
 
             case 2:
                 printf("请输入取件码: ");
-                scanf("%s", search_input);
+                safe_input(search_input, sizeof(search_input));
                 package = find_package_by_claim_code(search_input);
                 if (package.package_id > 0) {
                     print_full_package_info(&package);
                     printf("按Enter键继续");
-                    getchar();
                     getchar();
                     single = 1;
                 } else {
@@ -512,21 +659,19 @@ void search_and_modify_package() {
 
             case 3:
                 printf("请输入收件人电话: ");
-                scanf("%s", search_input);
+                safe_input(search_input, sizeof(search_input));
                 packages = find_packages_by_recipient_phone_number(search_input, &count);
                 break;
 
             case 4:
                 printf("请输入收件人姓名: ");
-                fgets(search_input, sizeof(search_input), stdin);
-                search_input[strcspn(search_input, "\n")] = 0;
+                safe_input(search_input, sizeof(search_input));
                 packages = find_packages_by_recipient_name(search_input, &count);
                 break;
 
             case 5:
                 printf("请输入寄件人姓名: ");
-                fgets(search_input, sizeof(search_input), stdin);
-                search_input[strcspn(search_input, "\n")] = 0;
+                safe_input(search_input, sizeof(search_input));
                 packages = find_packages_by_sender_name(search_input, &count);
                 break;
 
@@ -541,63 +686,13 @@ void search_and_modify_package() {
 
         // 如果查询到多个订单，分页显示
         if (count > 0) {
-            do {
-
-                system("cls");
-                printf("\n✅ 找到 %d 条匹配的订单 (第 %d 页 / 共 %d 页)：\n", count, page + 1, (count + PAGE_SIZE - 1) / PAGE_SIZE);
-                printf("+------------+------------------+------------------+----------+------------+\n");
-                printf("| 订单编号   | 发件人           | 收件人           | 状态     | 取件码     |\n");
-                printf("+------------+------------------+------------------+----------+------------+\n");
-
-                int start_index = page * PAGE_SIZE;
-                int end_index = start_index + PAGE_SIZE;
-                if (end_index > count) {
-                    end_index = count;
-                }
-
-                for (int i = start_index; i < end_index; i++) {
-                    printf("| %-10ld | %-19s | %-19s | %-11s | %-10s |\n",
-                           packages[i].package_id,
-                           packages[i].sender.name,
-                           packages[i].recipient.name,
-                           get_status_text(packages[i].status),
-                           packages[i].claim_code);
-                }
-
-                printf("+------------+------------------+------------------+----------+------------+\n");
-
-                printf("\n[N] 下一页  [P] 上一页  [Q] 退出  [S] 选择订单修改  [L] 查看包裹详情信息\n");
-                printf("请输入指令: ");
-                scanf(" %c", &page_command);
-                getchar();
-
-                if (page_command == 'N' || page_command == 'n') {
-                    if (page < (count - 1) / PAGE_SIZE) page++;
-                } else if (page_command == 'P' || page_command == 'p') {
-                    if (page > 0) page--;
-                } else if (page_command == 'S' || page_command == 's') {
-                    printf("请输入要修改的订单编号: ");
-                    scanf("%s", search_input);
-                    package = find_package_by_id(atol(search_input));
-                    if (package.package_id > 0) {
-                        update_package_info(package.package_id);
-                    } else {
-                        printf("❌ 订单编号无效。\n");
-                    }
-                    break;
-                } else if (page_command == 'L' || page_command == 'l') {
-                    printf("请输入要查看的订单编号: ");
-                    scanf("%s", search_input);
-                    package = find_package_by_id(atol(search_input));
-                    print_full_package_info(&package);
-                    getchar();
-                    printf("按回车键继续\n");
-                    getchar();
-                }
-            } while (page_command != 'Q' && page_command != 'q');
+            display_paginated_packages(packages, count, &page);
         } else {
            if (!single) printf("❌ 未找到符合条件的订单。\n");
            single = 0;
         }
     }
 }
+
+
+

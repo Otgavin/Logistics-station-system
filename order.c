@@ -100,35 +100,5 @@ void fill_order_from_stmt(Order *order, sqlite3_stmt *stmt) {
     strcpy(order->created_at, (const char *)sqlite3_column_text(stmt, 10));
 }
 
-// 通用：单个 Order 查询（param 是字符串）
-Order execute_order_query_single(sqlite3 *db, const char *sql, const char *param) {
-    sqlite3_stmt *stmt;
-    Order order = {0};
-    if (sqlite3_prepare_v2(db, sql, -1, &stmt, 0) == SQLITE_OK) {
-        sqlite3_bind_text(stmt, 1, param, -1, SQLITE_STATIC);
-        if (sqlite3_step(stmt) == SQLITE_ROW) {
-            fill_order_from_stmt(&order, stmt);
-        }
-        sqlite3_finalize(stmt);
-    }
-    return order;
-}
-
-// 通用：多个 Order 查询（param 是字符串）
-Order* execute_order_query_multiple(sqlite3 *db, const char *sql, const char *param, int *count) {
-    sqlite3_stmt *stmt;
-    Order *orders = malloc(sizeof(Order) * 100);
-    *count = 0;
-    if (sqlite3_prepare_v2(db, sql, -1, &stmt, 0) == SQLITE_OK) {
-        sqlite3_bind_text(stmt, 1, param, -1, SQLITE_STATIC);
-        while (sqlite3_step(stmt) == SQLITE_ROW && *count < 100) {
-            fill_order_from_stmt(&orders[*count], stmt);
-            (*count)++;
-        }
-        sqlite3_finalize(stmt);
-    }
-    return orders;
-}
-
 
 

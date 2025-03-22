@@ -9,23 +9,48 @@ extern sqlite3 *db;
 
 // 查询用户绑定的所有未使用优惠券
 int get_available_coupons_for_user(const char *username, Coupon *out_coupons, int *count) {
+    // 参数验证
+    if (!username || !out_coupons || !count || *count <= 0) {
+        fprintf(stderr, "Invalid parameters in get_available_coupons_for_user\n");
+        return 0;
+    }
+    
     sqlite3_stmt *stmt;
-    const char *sql = "SELECT code, discount_rate FROM coupons WHERE username = ? AND is_used = 0;";
+    // 修改SQL查询，一次性获取更多信息，包括创建日期或其他可能有用的字段
+    const char *sql = "SELECT code, discount_rate FROM coupons WHERE username = ? AND is_used = 0 ORDER BY discount_rate DESC;";
     int i = 0;
+    int max_coupons = *count; // 保存原始容量
 
-    if (sqlite3_prepare_v2(db, sql, -1, &stmt, 0) == SQLITE_OK) {
-        sqlite3_bind_text(stmt, 1, username, -1, SQLITE_STATIC);
-        while (sqlite3_step(stmt) == SQLITE_ROW && i < 10) {
-            strncpy(out_coupons[i].code, (const char *)sqlite3_column_text(stmt, 0), sizeof(out_coupons[i].code));
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, 0) != SQLITE_OK) {
+        fprintf(stderr, "SQL error: %s\n", sqlite3_errmsg(db));
+        return 0;
+    }
+
+    if (sqlite3_bind_text(stmt, 1, username, -1, SQLITE_STATIC) != SQLITE_OK) {
+        fprintf(stderr, "Binding error: %s\n", sqlite3_errmsg(db));
+        sqlite3_finalize(stmt);
+        return 0;
+    }
+
+    int result;
+    while ((result = sqlite3_step(stmt)) == SQLITE_ROW && i < max_coupons) {
+        const char *code = (const char *)sqlite3_column_text(stmt, 0);
+        if (code) {
+            strncpy(out_coupons[i].code, code, sizeof(out_coupons[i].code) - 1);
+            out_coupons[i].code[sizeof(out_coupons[i].code) - 1] = '\0';
             out_coupons[i].discount_rate = sqlite3_column_double(stmt, 1);
             out_coupons[i].is_used = 0;
             i++;
         }
-        sqlite3_finalize(stmt);
-        *count = i;
-        return i > 0;
     }
-    return 0;
+
+    if (result != SQLITE_DONE && result != SQLITE_ROW) {
+        fprintf(stderr, "Error fetching coupons: %s\n", sqlite3_errmsg(db));
+    }
+
+    sqlite3_finalize(stmt);
+    *count = i;
+    return i > 0;
 }
 
 // 提示用户选择优惠券

@@ -34,17 +34,5 @@ Order find_order_by_order_id(int order_id);
 Order find_order_by_package_id(long package_id);
 Order* find_orders_by_username(const char *username, int *count);
 
-// 通用内部接口
-Order execute_order_query_single(sqlite3 *db, const char *sql, const char *param);
-Order* execute_order_query_multiple(sqlite3 *db, const char *sql, const char *param, int *count);
-
-
-
-
-
-
-
-
-
 
 #endif// ORDER_H

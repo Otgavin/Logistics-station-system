@@ -39,7 +39,6 @@ void save_package_to_db(Package *new_package);
 void print_short_package_info(Package *new_package);
 void print_full_package_info(Package *new_package);
 
-
 //包裹查找相关
 Package find_package_by_id(const long id);
 Package* find_packages_by_recipient_phone_number(const char *phone_number, int *count);
@@ -49,11 +48,13 @@ Package find_package_by_claim_code(const char *code);
 Package execute_single_result_query_int(sqlite3 *db, const char *query, long param);
 Package execute_single_result_query_text(sqlite3 *db, const char *query, const char *param);
 Package* execute_multiple_result_query(sqlite3 *db, const char *query, const char *param, int *count);
+void populate_package_from_stmt(Package *package, sqlite3_stmt *stmt);
 
 //包裹列举相关
 const char* get_status_text(int status);
 int list_packages(int page, const char *order_by);
 void update_package_info(long package_id);
+int update_package_status(long package_id, int new_status);
 
 //主函数
 void list_and_change_packages();

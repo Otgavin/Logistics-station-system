@@ -1,6 +1,7 @@
 #ifndef PRICE_H
 #define PRICE_H
 
+#include <stddef.h>
 #include "packages.h"
 #include "users.h"
 #include "coupon.h"
